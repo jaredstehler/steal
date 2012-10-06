@@ -2393,8 +2393,18 @@
 	// you steal(moduleId1, moduleId2, function(module1, module2){});
 	// 
 	win.define = function( moduleId, dependencies, method ) {
-	  var applyStealDep = function(dependencies) {
-	    map(dependencies, function(dependency){
+		if(typeof moduleId == 'function'){
+			modules[URI.cur+""] = moduleId();
+		} else if(!method && dependencies){
+			if(typeof dependencies == "function"){
+			  if(typeof moduleId == 'string'){
+    			modules[moduleId] = dependencies();
+			  }
+			  else {
+			    method = dependencies;
+			    dependencies = moduleId;
+			    
+			    steal.apply(null, map(dependencies, function(dependency){
             dependency = typeof dependency === "string" ? {
               id: dependency
             } : dependency;
@@ -2402,20 +2412,7 @@
             
             dependency.idToUri = steal.amdIdToUri;
             return dependency;
-          }).concat(method);
-	  }
-	  
-		if(typeof moduleId == 'function'){
-			modules[URI.cur+""] = moduleId();
-		} else if(!method && dependencies){
-			if(typeof dependencies == "function"){
-			  if( typeof moduleId == 'string' ){
-  				modules[moduleId] = dependencies();
-			  }
-			  else {
-			    method = dependencies;
-			    dependencies = moduleId;
-          applyStealDep(dependencies);
+          }).concat(method) )
 			  }
 			} else {
 				modules[moduleId] = dependencies;
@@ -2424,7 +2421,15 @@
 		} else if (dependencies && method && !dependencies.length ) {
 			modules[moduleId] = method();
 		} else {
-			applyStealDep(dependencies);
+			steal.apply(null, map(dependencies, function(dependency){
+				dependency = typeof dependency === "string" ? {
+					id: dependency
+				} : dependency;
+				dependency.toId = steal.amdToId;
+				
+				dependency.idToUri = steal.amdIdToUri;
+				return dependency;
+			}).concat(method) )
 		}
 		
 	}
