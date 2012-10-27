@@ -6,9 +6,9 @@ var rootSteal = false;
 // and, it helps if we use a 'collection' steal because of it's natural
 // use for going through the pending queue
 //
-h.extend(steal, {
+h.extend(st, {
 	// modifies src
-/*makeOptions : after(steal.makeOptions,function(raw){
+/*makeOptions : after(st.makeOptions,function(raw){
 		raw.src = URI.root().join(raw.rootSrc = URI( raw.rootSrc ).insertMapping());
 	}),*/
 
@@ -24,20 +24,20 @@ h.extend(steal, {
 	 */
 	map: function( from, to ) {
 		if ( h.isString(from) ) {
-			steal.mappings[from] = {
+			st.mappings[from] = {
 				test: new RegExp("^(\/?" + from + ")([/.]|$)"),
 				path: to
 			};
-			h.each(resources, function( id, resource ) {
-				if ( resource.options.type != "fn" ) {
+			h.each(modules, function( id, module ) {
+				if ( module.options.type != "fn" ) {
 					// TODO terrible
-					var buildType = resource.options.buildType;
-					resource.setOptions(resource.orig);
-					resource.options.buildType = buildType;
+					var buildType = module.options.buildType;
+					module.setOptions(module.orig);
+					module.options.buildType = buildType;
 				}
 			})
 		} else { // its an object
-			h.each(from, steal.map);
+			h.each(from, st.map);
 		}
 		return this;
 	},
@@ -47,17 +47,17 @@ h.extend(steal, {
 		// we create one and set it up
 		// to start loading its dependencies (the current pending steals)
 		if (!rootSteal ) {
-			rootSteal = new Resource();
+			rootSteal = new Module();
 			// keep a reference in case it disappears
 			var cur = rootSteal,
 				// runs when a steal is starting
 				go = function() {
 					// indicates that a collection of steals has started
-					steal.trigger("start", cur);
+					st.trigger("start", cur);
 					cur.completed.then(function() {
 
 						rootSteal = null;
-						steal.trigger("end", cur);
+						st.trigger("end", cur);
 
 
 					});
@@ -65,14 +65,14 @@ h.extend(steal, {
 					cur.executed();
 				};
 			// If we are in the browser, wait a
-			// brief timeout before executing the rootResource.
+			// brief timeout before executing the rootModule.
 			// This allows embeded script tags with steal to be part of 
 			// the initial set
-			if ( win.setTimeout ) {
+			if ( h.win.setTimeout ) {
 				// we want to insert a "wait" after the current pending
-				steal.pushPending();
+				st.pushPending();
 				setTimeout(function() {
-					steal.popPending();
+					st.popPending();
 					go();
 				}, 0)
 			} else {
@@ -87,15 +87,15 @@ h.extend(steal, {
 
 (function(){
 	var myPending;
-	steal.pushPending = function(){
-		myPending = pending.slice(0);
-		pending = [];
+	st.pushPending = function(){
+		myPending = Module.pending.slice(0);
+		Module.pending = [];
 		h.each(myPending, function(i, arg){
-			Resource.make(arg);
+			Module.make(arg);
 		})
 	}
-	steal.popPending = function(){
-		pending = pending.length ? myPending.concat(null,pending) : myPending;
+	st.popPending = function(){
+		Module.pending = Module.pending.length ? myPending.concat(null,Module.pending) : myPending;
 	}
 })();
 
@@ -105,9 +105,9 @@ h.extend(steal, {
 		jQ, ready = false;
 
 	// check if jQuery loaded after every script load ...
-	Resource.prototype.executed = h.before(Resource.prototype.executed, function() {
+	Module.prototype.executed = h.before(Module.prototype.executed, function() {
 
-		var $ = win.jQuery;
+		var $ = h.win.jQuery;
 		if ( $ && "readyWait" in $ ) {
 
 			//Increment jQuery readyWait if ncecessary.
@@ -120,7 +120,7 @@ h.extend(steal, {
 	});
 
 	// once the current batch is done, fire ready if it hasn't already been done
-	steal.bind("end", function() {
+	st.bind("end", function() {
 		if ( jQueryIncremented && !ready ) {
 			jQ.ready(true);
 			ready = true;
@@ -146,17 +146,17 @@ h.extend(steal, {
 }
 
 
-//Resource.prototype.load = before( Resource.prototype.load, function(){
-//	console.log("      load", name(this), this.loading, steal._id, this.id)
+//Module.prototype.load = before( Module.prototype.load, function(){
+//	console.log("      load", name(this), this.loading, st._id, this.id)
 //})
 
-Resource.prototype.executed = before(Resource.prototype.executed, function(){
+Module.prototype.executed = before(Module.prototype.executed, function(){
 	var namer= name(this)
-	console.log("      executed", namer, steal._id, this.id)
+	console.log("      executed", namer, st._id, this.id)
 })
 
-Resource.prototype.complete = before(Resource.prototype.complete, function(){
-	console.log("      complete", name(this), steal._id, this.id)
+Module.prototype.complete = before(Module.prototype.complete, function(){
+	console.log("      complete", name(this), st._id, this.id)
 })*/
 
 
@@ -177,23 +177,23 @@ var addEvent = function( elem, type, fn ) {
 	},
 	firstEnd = false;
 
-addEvent(win, "load", function() {
+addEvent(h.win, "load", function() {
 	loaded.load.resolve();
 });
 
-steal.one("end", function( collection ) {
+st.one("end", function( collection ) {
 	loaded.end.resolve(collection);
 	firstEnd = collection;
-	steal.trigger("done", firstEnd)
+	st.trigger("done", firstEnd)
 })
-steal.firstComplete = loaded.end;
+st.firstComplete = loaded.end;
 
 Deferred.when(loaded.load, loaded.end).then(function() {
-	steal.trigger("ready")
-	steal.isReady = true;
+	st.trigger("ready")
+	st.isReady = true;
 });
 
-steal.events.done = {
+st.events.done = {
 	add: function( cb ) {
 		if ( firstEnd ) {
 			cb(firstEnd);
@@ -210,26 +210,26 @@ h.startup = h.after(h.startup, function() {
 
 	// A: GET OPTIONS
 	// 1. get script options
-	h.extend(options, steal.getScriptOptions());
+	h.extend(options, st.getScriptOptions());
 
 	// 2. options from a steal object that existed before this steal
 	h.extend(options, h.opts);
 
 	// 3. if url looks like steal[xyz]=bar, add those to the options
 	// does this ened to be supported anywhere?
-	var search = win.location && decodeURIComponent(win.location.search);
+	var search = h.win.location && decodeURIComponent(h.win.location.search);
 	search && search.replace(/steal\[([^\]]+)\]=([^&]+)/g, function( whoe, prop, val ) {
 		options[prop] = ~val.indexOf(",") ? val.split(",") : val;
 	});
 
 	// B: DO THINGS WITH OPTIONS
 	// CALCULATE CURRENT LOCATION OF THINGS ...
-	steal.config(options);
+	stealConfiguration(options);
 	
 
 	// mark things that have already been loaded
 	h.each(options.executed || [], function( i, stel ) {
-		steal.executed(stel)
+		st.executed(stel)
 	})
 	// immediate steals we do
 	var steals = [];
@@ -242,14 +242,14 @@ h.startup = h.after(h.startup, function() {
 	}
 
 	// either instrument is in this page (if we're the window opened from
-	// steal.browser), or its opener has it
+	// st.browser), or its opener has it
 	// try-catching this so we dont have to build up to the iframe
 	// instrumentation check
 	try {
-		// win.top.steal.instrument is for qunit
-		// win.top.opener.steal.instrument is for funcunit
-		if(!options.browser && ((win.top && win.top.steal.instrument) || 
-								(win.top && win.top.opener && win.top.opener.steal && win.top.opener.steal.instrument))) {
+		// win.top.st.instrument is for qunit
+		// win.top.opener.st.instrument is for funcunit
+		if(!options.browser && ((h.win.top && h.win.top.st.instrument) || 
+								(h.win.top && h.win.top.opener && h.win.top.opener.steal && h.win.top.opener.st.instrument))) {
 
 			// force startFiles to load before instrument
 			steals.push(h.noop, {
@@ -263,9 +263,9 @@ h.startup = h.after(h.startup, function() {
 	}
 
 	// we only load things with force = true
-	if ( stealConfig.env == "production" && stealConfig.loadProduction && stealConfig.production ) {
-		steal({
-			id: stealConfig.production,
+	if ( stealConfiguration().env == "production" && stealConfiguration().loadProduction && stealConfiguration().production ) {
+		st({
+			id: stealConfiguration().production,
 			force: true
 		});
 	} else {
@@ -283,6 +283,6 @@ h.startup = h.after(h.startup, function() {
 		}
 	}
 	if ( steals.length ) {
-		steal.apply(win, steals);
+		st.apply(h.win, steals);
 	}
 });

@@ -1,7 +1,8 @@
 // ============ RESOURCE ================
 // a map of resources by resourceID
 var resources = {},
-	id = 0;
+	id = 0,
+	ignoreableModules = ['stealconfig.js'];
 // this is for methods on a 'steal instance'.  A file can be in one of a few states:
 // created - the steal instance is created, but we haven't started loading it yet
 //           this happens when thens are used
@@ -9,7 +10,7 @@ var resources = {},
 // loaded - (isLoaded=true) The file has been run, but its dependency files have been completed
 // complete - all of this files dependencies have loaded and completed.
 
-// A Resource is almost anything. It is different from a module
+// A Module is almost anything. It is different from a module
 // as it doesn't represent some unit of functionality, rather
 // it represents a unit that can have other units "within" it
 // as dependencies.  A resource can:
@@ -38,7 +39,7 @@ var resources = {},
 // - completed - a deferred indicating if all of this resources dependencies have
 //   completed
 // - dependencies - an array of dependencies
-var Resource = function( options ) {
+var Module = function( options ) {
 	// an array for dependencies, this is the steal calls this resource makes
 	this.dependencies = [];
 
@@ -50,7 +51,7 @@ var Resource = function( options ) {
 	// the original options
 	this.orig = options;
 	// the parent steal's id
-	this.curId = steal.cur && steal.cur.options.id;
+	this.curId = st.cur && st.cur.options.id;
 
 	this.setOptions(options);
 	// create the deferreds used to manage state
@@ -58,12 +59,14 @@ var Resource = function( options ) {
 	this.run = Deferred();
 	this.completed = Deferred();
 };
-// `Resource.make` is used to either create
+
+Module.pending = [];
+// `Module.make` is used to either create
 // a new resource, or return an existing
 // resource that matches the options.
-Resource.make = function( options ) {
+Module.make = function( options ) {
 	// create the temporary reasource
-	var resource = new Resource(options),
+	var resource = new Module(options),
 		// use `rootSrc` as the definitive ID
 		id = resource.options.id;
 
@@ -79,7 +82,7 @@ Resource.make = function( options ) {
 		} else {
 
 			// Otherwise get the cached resource
-			existingResource = resources[id];
+			existingModule = resources[id];
 			// If options were passed, copy new properties over.
 			// Don't copy src, etc because those have already
 			// been changed to be the right values;
@@ -87,11 +90,11 @@ Resource.make = function( options ) {
 				// extend everything other than id
 				for(var prop in options){
 					if(prop !== "id") {
-						existingResource.options[prop] = options[prop];
+						existingModule.options[prop] = options[prop];
 					}
 				}
 			}
-			return existingResource;
+			return existingModule;
 		}
 	}
 
@@ -102,7 +105,7 @@ Resource.make = function( options ) {
 // use modules b/c they are more fuzzy
 // a module's id stays the same, but a path might change
 // 
-Resource.update = function() {
+Module.update = function() {
 	for ( var rootSrc in resources ) {
 		if (!resources[resources].loaded.isResolved() ) {
 
@@ -110,10 +113,10 @@ Resource.update = function() {
 	}
 };
 
-h.extend(Resource.prototype, {
+h.extend(Module.prototype, {
 	setOptions: function( options ) {
 		var prevOptions = this.options; 
-		// if we have no options, we are the global Resource that
+		// if we have no options, we are the global Module that
 		// contains all other resources.
 		if (!options ) { //global init cur ...
 			this.options = {};
@@ -123,7 +126,7 @@ h.extend(Resource.prototype, {
 		else if ( h.isFn(options) ) {
 			var uri = URI.cur,
 				self = this,
-				cur = steal.cur;
+				cur = st.cur;
 			this.options = {
 				fn: function() {
 
@@ -181,7 +184,7 @@ h.extend(Resource.prototype, {
 			this.unique = false;
 		} else {
 			// save the original options
-			this.options = steal.makeOptions(h.extend({}, h.isString(options) ? {
+			this.options = st.makeOptions(h.extend({}, h.isString(options) ? {
 				id: options
 			} : options), this.curId);
 
@@ -193,6 +196,9 @@ h.extend(Resource.prototype, {
 			if(!this.options[opt]){
 				this.options[opt] = prevOptions[opt];
 			}
+		}
+		if(this.options.id && h.inArray(ignoreableModules, this.options.id + "") > - 1){
+			this.options.abort = false;
 		}
 	},
 	
@@ -222,7 +228,7 @@ h.extend(Resource.prototype, {
 			this.exports()
 		}
 		// set this as the current resource
-		steal.cur = this;
+		st.cur = this;
 
 		// mark yourself as 'loaded'.
 		this.run.resolve();
@@ -231,13 +237,29 @@ h.extend(Resource.prototype, {
 		// It in interactives because you can't use onload to know
 		// which script is executing.
 		if ( h.support.interactive && src ) {
-			myqueue = interactives[src];
+			/*myqueue = interactives[src];*/
+			if(interactives[src]){
+				myqueue = [];
+				if(interactives.length){
+					for(var i = 0; i < interactives.length; i++){
+						if(interactives[i] !== this.orig){
+							myqueue.push(interactives[i])
+						}
+					}
+				} else {
+					if(interactives[src] !== this.orig){
+						myqueue = interactives[src];
+						delete interactives[src];
+					}
+				}
+				
+			}
 		}
 		// In other browsers, the queue of items to load is
 		// what is in pending
 		if (!myqueue ) {
-			myqueue = pending.slice(0);
-			pending = [];
+			myqueue = Module.pending.slice(0);
+			Module.pending = [];
 		}
 
 		// if we have nothing, mark us as complete
@@ -249,7 +271,7 @@ h.extend(Resource.prototype, {
 		// now we have to figure out how to wire up our pending steals
 		var self = this,
 			// the current
-			isProduction = stealConfig.env == "production",
+			isProduction = stealConfiguration().env == "production",
 
 			stealInstances = [];
 
@@ -258,18 +280,18 @@ h.extend(Resource.prototype, {
 		h.each(myqueue, function( i, item ) {
 			if( item === null){
 				stealInstances.push(null);
-				return
+				return;
 			}
 			
-			if ( (isProduction && item.ignore) || (!isProduction && !steal.isRhino && item.prodonly)) {
+			if ( (isProduction && item.ignore) || (!isProduction && !st.isRhino && item.prodonly)) {
 				return;
 			}
 			
 			// make a steal object
-			var stel = Resource.make(item);
+			var stel = Module.make(item);
 			if ( packHash[stel.options.id] && stel.options.type !== 'fn' ) { // if we are production, and this is a package, mark as loading, but steal package?
-				steal.has(""+stel.options.id);
-				stel = Resource.make(packHash[""+stel.options.id]);
+				st.has(""+stel.options.id);
+				stel = Module.make(packHash[""+stel.options.id]);
 			}
 			// has to happen before 'needs' for when reversed...
 			stealInstances.push(stel);
@@ -318,7 +340,7 @@ h.extend(Resource.prototype, {
 			// if there are needs, this can not be part of the "firstSet"
 			h.each(resource.options.needs || [], function( i, raw ) {
 				
-				var need = Resource.make(raw);
+				var need = Module.make(raw);
 				// add the need to the resource's dependencies
 				h.uniquePush(resource.needsDependencies, need);
 				waitsOn.push(need);
@@ -371,8 +393,7 @@ h.extend(Resource.prototype, {
 		if (!self.executing ) {
 			self.executing = true;
 
-			steal.require(self.options, function( value ) {
-				
+			st.require(self.options, function( value ) {
 				self.executed( value );
 			}, function( error, src ) {
 				var abortFlag = self.options.abort,
@@ -383,7 +404,7 @@ h.extend(Resource.prototype, {
 					errorCb.call(self.options);
 				}
 
-				win.clearTimeout && win.clearTimeout(self.completeTimeout)
+				h.win.clearTimeout && h.win.clearTimeout(self.completeTimeout)
 
 				// if abort: false, register the script as loaded, and don't throw
 				if ( abortFlag === false ) {
@@ -398,23 +419,23 @@ h.extend(Resource.prototype, {
 });
 
 // =============================== ERROR HANDLING ===============================
-h.extend(Resource.prototype, {
-	load: h.after(Resource.prototype.load, function( stel ) {
+h.extend(Module.prototype, {
+	load: h.after(Module.prototype.load, function( stel ) {
 		var self = this;
-		if ( h.doc && !self.completed && !self.completeTimeout && !steal.isRhino && (self.options.src.protocol == "file" || !h.support.error) ) {
+		if ( h.doc && !self.completed && !self.completeTimeout && !st.isRhino && (self.options.src.protocol == "file" || !h.support.error) ) {
 			self.completeTimeout = setTimeout(function() {
 				throw "steal.js : " + self.options.src + " not completed"
 			}, 5000);
 		}
 	}),
-	complete: h.after(Resource.prototype.complete, function() {
+	complete: h.after(Module.prototype.complete, function() {
 		this.completeTimeout && clearTimeout(this.completeTimeout)
 	}),
 
 
 	// if we're about to mark a file as executed, mark its "has" array files as
 	// executed also
-	executed: h.before(Resource.prototype.executed, function() {
+	executed: h.before(Module.prototype.executed, function() {
 		if ( this.options.has ) {
 			this.loadHas();
 		}
@@ -437,7 +458,7 @@ h.extend(Resource.prototype, {
 		h.each(this.options.has, function( i, has ) {
 			// don't want the current file to change, since we're just marking files as loaded
 			URI.cur = URI(current);
-			steal.executed(has);
+			st.executed(has);
 		});
 
 	}
@@ -449,7 +470,7 @@ h.extend(Resource.prototype, {
 // because one file has JS and another does not?
 // we could check if it matches something with .js because foo.less.js SHOULD
 // be rare
-Resource.prototype.execute = h.before(Resource.prototype.execute, function() {
+Module.prototype.execute = h.before(Module.prototype.execute, function() {
 	var raw = this.options;
 
 	// if it's a string, get it's extension and check if
@@ -461,9 +482,9 @@ Resource.prototype.execute = h.before(Resource.prototype.execute, function() {
 		}
 		raw.type = ext;
 	}
-	if (!types[raw.type] && stealConfig.env == 'development' ) {
+	if (!types[raw.type] && stealConfiguration().env == 'development' ) {
 		throw "steal.js - type " + raw.type + " has not been loaded.";
-	} else if (!types[raw.type] && stealConfig.env == 'production' ) {
+	} else if (!types[raw.type] && stealConfiguration().env == 'production' ) {
 		// if we haven't defined EJS yet and we're in production, its ok, just ignore it
 		return;
 	}
@@ -480,7 +501,7 @@ Resource.prototype.execute = h.before(Resource.prototype.execute, function() {
 //
 // after a steal is created, if its been loaded
 // already and has a "has", mark those files as loaded
-Resource.make = h.after(Resource.make, function( stel ) {
+Module.make = h.after(Module.make, function( stel ) {
 	// if we have things
 	if ( stel.options.has ) {
 		// if we have loaded this already (and we are adding has's)
@@ -488,7 +509,7 @@ Resource.make = h.after(Resource.make, function( stel ) {
 			stel.loadHas();
 		} else {
 			// have to mark has as loading and executing (so we don't try to get them)
-			steal.has.apply(steal, stel.options.has)
+			st.has.apply(st, stel.options.has)
 		}
 	}
 	return stel;
