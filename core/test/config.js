@@ -1,48 +1,48 @@
 module('Config')
 
-test('steal.config should return default config object', function(){
-	equal(steal.config().env, 'development');
+test('st.config should return default config object', function(){
+	equal(st.config().env, 'development');
 })
 
-test('steal.config.startFile', function(){
-	steal.config.startFile('foo/bar.html')
-	equal(steal.config().startFile, 'foo/bar.html');
-	equal(steal.config().production, 'foo/production.js');
+test('st.config.startFile', function(){
+	st.config.startFile('foo/bar.html')
+	equal(st.config().startFile, 'foo/bar.html');
+	equal(st.config().production, 'foo/production.js');
 })
 
-test('steal.config.map', function(){
-	steal.config({
+test('st.config.map', function(){
+	st.config({
 		map: {
 			'*' : {
 				jquery : 'foo/bar/jquery'
 			}
 		}
 	})
-	var resource = Resource.make('jquery');
-	equal(resource.options.id.path, 'foo/bar/jquery/jquery.js');
+	var module = Module.make('jquery');
+	equal(module.options.id.path, 'foo/bar/jquery/jquery.js');
 })
 
-test('steal.getScriptOptions', function(){
+test('st.getScriptOptions', function(){
 	var script = h.scriptTag(), scriptOpts;
-	script.src = "http://localhost/app/steal.production.js?foobarapp,development";
-	scriptOpts = steal.getScriptOptions(script);
+	script.src = "http://localhost/app/st.production.js?foobarapp,development";
+	scriptOpts = st.getScriptOptions(script);
 	equal(scriptOpts.env, "development");
 	equal(scriptOpts.root, "http://localhost/app");
 	equal(scriptOpts.startFile, "foobarapp/foobarapp.js");
-	script.src = "http://localhost/app/steal.production.js?foobarapp";
-	scriptOpts = steal.getScriptOptions(script);
+	script.src = "http://localhost/app/st.production.js?foobarapp";
+	scriptOpts = st.getScriptOptions(script);
 	equal(scriptOpts.env, "production");
 	equal(scriptOpts.root, "http://localhost/app");
 	equal(scriptOpts.startFile, "foobarapp/foobarapp.js");
-	script.src = "http://localhost/app/steal.production.js?foobarapp.js";
-	scriptOpts = steal.getScriptOptions(script);
+	script.src = "http://localhost/app/st.production.js?foobarapp.js";
+	scriptOpts = st.getScriptOptions(script);
 	equal(scriptOpts.env, "production");
 	equal(scriptOpts.root, "http://localhost/app");
 	equal(scriptOpts.startFile, "foobarapp.js");
 })
 
-asyncTest('steal.config.shim', 7, function(){
-	steal.config({
+asyncTest('st.config.shim', 7, function(){
+	st.config({
 		shim: {
 			"mocks/foobar" : {
 				init: function(){
@@ -63,29 +63,29 @@ asyncTest('steal.config.shim', 7, function(){
 			"mocks/arraydeps" : ["mocks/global", "mocks/foobar"]
 		}
 	})
-	var resourceA = Resource.make('mocks/foobar');
-	resourceA.completed.then(function(){
-		equal(resourceA.value, "foobar")
+	var moduleA = Module.make('mocks/foobar');
+	moduleA.completed.then(function(){
+		equal(moduleA.value, "foobar")
 		start();
 	})
-	resourceA.execute();
-	var resourceB = Resource.make('mocks/global');
-	resourceB.completed.then(function(){
-		equal(resourceB.value, 42)
+	moduleA.execute();
+	var moduleB = Module.make('mocks/global');
+	moduleB.completed.then(function(){
+		equal(moduleB.value, 42)
 		start();
 	})
-	resourceB.execute();
-	var resourceC = Resource.make('mocks/hasdeps');
-	resourceC.completed.then(function(){
-		ok(resourceC.value)
+	moduleB.execute();
+	var moduleC = Module.make('mocks/hasdeps');
+	moduleC.completed.then(function(){
+		ok(moduleC.value)
 		start();
 	})
-	resourceC.execute();
-	var resourceD = Resource.make('mocks/hasdeps');
-	resourceD.completed.then(function(){
-		equal(window.gLobal, 42, "Deps were loaded before resource")
-		equal(window.foobar, "baz", "Deps were loaded before resource")
+	moduleC.execute();
+	var moduleD = Module.make('mocks/hasdeps');
+	moduleD.completed.then(function(){
+		equal(window.gLobal, 42, "Deps were loaded before module")
+		equal(window.foobar, "baz", "Deps were loaded before module")
 		start();
 	})
-	resourceD.execute();
+	moduleD.execute();
 })

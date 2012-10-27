@@ -1,13 +1,11 @@
 // ## URI ##
 /**
- * @class steal.URI
+ * @class st.URI
  * A URL / URI helper for getting information from a URL.
  * 
  *     var uri = URI( "http://stealjs.com/index.html" )
  *     uri.path //-> "/index.html"
  */
-
-var win = win || (function(){ return this }).call(null)
 
 var URI = function( url ) {
 	if ( this.constructor !== URI ) {
@@ -47,9 +45,9 @@ h.extend(URI, {
  * @attribute page
  * The location of the page as a URI.
  * 
- *     steal.URI.page.protocol //-> "http"
+ *     st.URI.page.protocol //-> "http"
  */
-URI.page = URI(win.location && location.href);
+URI.page = URI(h.win.location && location.href);
 /**
  * @attribute cur
  * 
@@ -78,7 +76,7 @@ h.extend(URI.prototype, {
 		return this.protocol ? this.protocol + "://" + this.host : "";
 	},
 	isCrossDomain: function( uri ) {
-		uri = URI(uri || win.location.href);
+		uri = URI(uri || h.win.location.href);
 		var domain = this.domain(),
 			uriDomain = uri.domain()
 			return (domain && uriDomain && domain != uriDomain) || this.protocol === "file" || (domain && !uriDomain);
@@ -202,11 +200,15 @@ URI.prototype.insertMapping = function() {
 	// go through mappings
 	var orig = "" + this,
 		key, value;
-	for ( key in steal.mappings ) {
-		value = steal.mappings[key]
+	for ( key in st.mappings ) {
+		value = st.mappings[key]
 		if ( value.test.test(orig) ) {
 			return orig.replace(key, value.path);
 		}
 	}
 	return URI(orig);
 };
+
+// temp add st.File for backward compat
+
+// --- END URI

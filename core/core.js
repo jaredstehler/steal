@@ -5,7 +5,7 @@
 // - Deferred - a minimal deferred implementation
 // - Uri - methods for dealing with urls
 // - Api - steal's API
-// - Resource - an object that represents a resource that is loaded and run and has dependencies.
+// - Module - an object that represents a resource that is loaded and run and has dependencies.
 // - Type - a type systems used to load and run different types of resources
 // - Packages -  used to define packages
 // - Extensions - makes steal pre-load a type based on an extension (ex: .coffee)
@@ -17,102 +17,100 @@
 // - Window Load - API for knowing when the window has loaded and all scripts have loaded
 // - Interactive - Code for IE
 // - Options - 
-(function( win, undefined ) {
+(function( undefined ) {
 
 	/*# helpers.js #*/
-	
+
 	/*# deferred.js #*/
 
 	/*# uri.js #*/
 
-	/*# resource.js #*/
+	/*# config_manager.js #*/
+
+	function stealManager(kickoff, stealConfiguration){
 		
-	
+		/*# module.js #*/
 
-	
-
-	/*# config.js #*/
-	
-	/*# amd.js #*/
-
-	
-
-
-	/*# static.js #*/
-
-	/*# types.js #*/
-
-	//  ============================== Packages ===============================
-	/**
-	 * @function steal.packages
-	 * `steal.packages( packageIds... )` defines modules for deferred downloading.
-	 * 
-	 * This is used by the build system to build collections of modules that will be downloaded
-	 * after initial page load.
-	 * 
-	 * For example, an application that wants to progressively load the contents and
-	 * dependencies of _login/login.js_, _filemanager/filemanager.js_, and _contacts/contacts.js_,
-	 * while immediately loading the current users's data might look like:
-	 * 
-	 *     steal.packages('login','filemanager','contacts')
-	 *     steal('models/user', function(User){
-	 * 	   
-	 *       // get the current User
-	 *       User.findOne({id: "current"}, 
-	 * 
-	 *         // success - they logged in
-	 *         function(user){
-	 *           if(window.location.hash == "#filemanager"){
-	 *             steal('filemanager')  
-	 *           }
-	 *         }, 
-	 *         // error - they are logged out
-	 *         function(){
-	 *           steal('login', function(){
-	 *             new Login(document.body);
-	 *             // preload filemanager
-	 * 
-	 *           })  
-	 *         })
-	 *     })
-	 * 
-	 *
-	 * 		steal.packages('tasks','dashboard','fileman');
-	 *
-	 */
-	var packs = [],
-		packHash = {};
-	steal.packages = function( map ) {
-
-		if (!arguments.length ) {
-			return packs;
-		} else {
-			if ( typeof map == 'string' ) {
-				packs.push.apply(packs, arguments);
-			} else {
-				packHash = map;
+		var st = function() {
+			
+			// convert arguments into an array
+			var args = h.map(arguments);
+			if ( args.length ) {
+				Module.pending.push.apply(Module.pending, args);
+				// steal.after is called everytime steal is called
+				// it kicks off loading these files
+				st.after(args);
+				// return steal for chaining
 			}
 
-			return this;
+			return st;
+		};
+
+		st.clone = function(){
+			return stealManager(false, h.extend({}, stealConfiguration))
 		}
-	};
 
-	/*# startup.js #*/
+		st.config = stealConfiguration
 
-	/*# interactive.js #*/
+		st.config.on(function(){
+			h.each(resources, function( id, resource ) {
+				if ( resource.options.type != "fn" ) {
+					// TODO this is terrible
+					var buildType = resource.options.buildType;
+					resource.setOptions(resource.orig);
+					var newId = resource.options.id;
+					// this mapping is to move a config'd key
+					if ( id !== newId ) {
+						resources[newId] = resource;
+						// TODO: remove the old one ....
+					}
+					resource.options.buildType = buildType;
+				}
+			})
+		})
+
+		st._id = Math.floor(1000 * Math.random());
+
+		/*# config.js #*/
+		
+		/*# amd.js #*/
+
+		/*# static.js #*/
+
+		/*# types.js #*/
+
+		/*# packages.js #*/
+
+		/*# startup.js #*/
+
+		/*# interactive.js #*/
+
+		st.File = st.URI = URI;
+
+		if(kickoff){
+			var stealModule = new Module("steal")
+			stealModule.value = st;
+			stealModule.loaded.resolve();
+			stealModule.run.resolve();
+			stealModule.executing = true;
+			stealModule.completed.resolve();
+
+			resources[stealModule.options.id] = stealModule;
+		}
+		
+
+		h.startup();
+		//win.steals = steals;
+		st.resources = resources;
+		h.win.Module = Module;
+
+		return st;
+	}
+
+	/*# init.js #*/
+
+	window.steal = stealManager(true, configManager())
 	
-	var stealResource = new Resource("steal")
-	stealResource.value = steal;
-	stealResource.loaded.resolve();
-	stealResource.run.resolve();
-	stealResource.executing = true;
-	stealResource.completed.resolve();
+	
 
-	resources[stealResource.options.id] = stealResource;
-
-	h.startup();
-	//win.steals = steals;
-	win.steal.resources = resources;
-	win.Resource = Resource;
-
-})(this);
+})();

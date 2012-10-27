@@ -1,25 +1,25 @@
-module('Resource')
+module('Module')
 
-test('Resource.make always returns same resource for the same id', function(){
-	var res = Resource.make('jquery');
-	equal(res, Resource.make('jquery'))
+test('Module.make always returns same module for the same id', function(){
+	var res = Module.make('jquery');
+	equal(res, Module.make('jquery'))
 })
 
 test('loaded, run and completed are deferreds', function(){
-	var res = Resource.make('jquery')
+	var res = Module.make('jquery')
 	ok(TH.isDeferred(res.loaded))
 	ok(TH.isDeferred(res.run))
 	ok(TH.isDeferred(res.completed))
 })
 
-test('resource options will be extended if called twice for the same id', function(){
-	var res = Resource.make('jquery')
-	var res2 = Resource.make({id: 'jquery', foo: 'bar'})
+test('module options will be extended if called twice for the same id', function(){
+	var res = Module.make('jquery')
+	var res2 = Module.make({id: 'jquery', foo: 'bar'})
 	equal(res.options.foo, 'bar')
 })
 
 test('callback functions for deferreds should be called', 2, function(){
-	var res = Resource.make('jquery')
+	var res = Module.make('jquery')
 	var callbacks = ['completed', 'loaded'];
 	for(var i = 0; i < callbacks.length; i++){
 		res[callbacks[i]].then(function(){
@@ -30,11 +30,11 @@ test('callback functions for deferreds should be called', 2, function(){
 	res.load();
 })
 
-test('calling execute should call deferred functions and steal.require.', 3, function(){
-	var res = Resource.make('jquery')
+test('calling execute should call deferred functions and st.require.', 3, function(){
+	var res = Module.make('jquery')
 	var callbacks = ['completed', 'loaded'];
-	var stealRequire = steal.require;
-	steal.require = function(){
+	var stealRequire = st.require;
+	st.require = function(){
 		ok(true)
 	}
 	for(var i = 0; i < callbacks.length; i++){
@@ -43,12 +43,12 @@ test('calling execute should call deferred functions and steal.require.', 3, fun
 		})
 	}
 	res.execute();
-	steal.require = stealRequire;
+	st.require = stealRequire;
 })
 
 test('correct load functions should be called for every type', function(){
 	var originalTypeFns = {};
-	var types = steal.config().types;
+	var types = st.config().types;
 	var typeLoadersCalled = [];
 	var load = [
 		'jquery.js',
@@ -66,11 +66,11 @@ test('correct load functions should be called for every type', function(){
 		originalTypeFns[type] = types[type].require;
 		assertFns[type] = assertRequire(type);
 	}
-	steal.config({types: assertFns})
+	st.config({types: assertFns})
 	for(var i = 0; i < load.length; i++){
-		var r = Resource.make(load[i]);
+		var r = Module.make(load[i]);
 		r.execute();
 	}
 	equal(typeLoadersCalled.join(), "js,fn,text,css");
-	steal.config({types: originalTypeFns})
+	st.config({types: originalTypeFns})
 })
