@@ -106,23 +106,31 @@ steal('steal',function(s){
 			return this;
 		}).call(null, 0);
 	/**
-	 * @function open
+	 * @function steal.build.open
+	 * @parent steal.build
 	 * 
-	 * Opens a page and returns helpers that can be used to extract steals and their 
-	 * content
+	 * `steal.build.open(url, [stealData], cb(opener) )`  
+	 * opens a page that typically uses steal.js. Once all
+	 * scripts have been loaded, `cb` is called back with `opener`.
+	 * `opener` is an object that helps walk through the modules 
+	 * loaded by steal.
 	 * 
-	 * Opens a page by:
+	 *     steal.build.open(
+	 *       "page.html",
+	 *       {
+	 * 	       startId: "myapp"
+	 *       }, 
+	 *       function(opener){})
+	 * 
+	 * `open` opens a page by:
 	 * 
 	 *   - temporarily deleting the rhino steal
 	 *   - opening the page with Envjs
 	 *   - setting back rhino steal, saving envjs's steal as steal._steal;
 	 * 
-	 * 
-	 * 
-	 * 
-	 * @param {String} url the html page to open
-	 * @param {Object} [stealData] - data to configure steal with
-	 * @param {Function} cb(opener) - an object with properties that makes extracting 
+	 * @param {String} url The html page to open.
+	 * @param {Object} [stealData] Data to [steal.config configure steal] with.
+	 * @param {Function} cb(opener) An object with properties that makes extracting 
 	 * the content for a certain tag slightly easier.
 	 * 
 	 *   - each(filter, depth, callback(options, stel)) - goes through steals loaded by this
@@ -142,10 +150,12 @@ steal('steal',function(s){
 	 *   - url - the html page opened
 	 *   - rootSteal - the 'root' steal instance
 	 *   - firstSteal - the first steal file
+	 * @param {Boolean} [includeFns=true]  indicates that iteration should
+	 * happen
 	 * @return {Object} an object with properties that makes extracting 
 	 * the content for a certain tag slightly easier.
 	 */
-	s.build.open = function( url, stealData, cb, depth, includeFns ) {
+	s.build.open = function( url, stealData, cb, includeFns ) {
 		// save and remove the old steal
 		var oldSteal = s,
 			// new steal is the steal opened
@@ -258,6 +268,33 @@ steal('steal',function(s){
 					window.jQuery && jQuery.holdReady(true);
 				},
 				"steal.js": function(script){
+					if(stealData.skipAll){
+						window.steal.config({
+							types: {
+								"js" : function(options, success){
+									var text;
+									if(options.text){
+										text = options.text;
+									}else{
+										text = readFile(options.id);
+									}
+									// check if steal is in this file
+									var stealInFile = /steal\(/.test(text);
+									if(stealInFile){
+										// if so, load it
+										eval(text)
+									} else {
+										// skip this file
+									}
+									success()
+								},
+								"fn": function (options, success) {
+									// skip all functions
+									success();
+								}
+							}
+						})
+					}
 					// a flag to tell steal we're in "build" mode
 					// this is used to completely ignore files with the "ignore" flag set
 					window.steal.isBuilding = true;

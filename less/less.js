@@ -1,6 +1,6 @@
 steal({id: "./less_engine.js",ignore: true}, function(){
-
-	if(steal.isRhino) {
+	// only if rhino and we have less
+	if(steal.isRhino && window.less) {
 		// Some monkey patching of the LESS AST
 		// For production builds we NEVER want the parser to add paths to a url(),
 		// the CSS postprocessor is doing that already.
@@ -57,7 +57,7 @@ steal({id: "./less_engine.js",ignore: true}, function(){
 	 *
 	 */
 	steal.type("less css", function(options, success, error){
-		var pathParts = options.src.path.split('/');
+		var pathParts = (options.src+'').split('/');
 		pathParts[pathParts.length - 1] = ''; // Remove filename
 
 		var paths = [];

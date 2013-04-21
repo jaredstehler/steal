@@ -2,26 +2,62 @@
 if(!steal.build){
 	steal.build = {};	
 }
-steal('steal','steal/build/js','steal/build/css',function( steal ) {
-
-/**
- * 
- * ### shared
- */
-	
-// { "//foo.js" : {} }
-
-	// recursively goes through steals and their dependencies.
-	
+steal('steal',
+	'steal/build/share',
+	'steal/build/js',
+	'steal/build/css',
+	'steal/build/open',
+	function( steal, shareUtil ) {
 	
 		
 		/**
+		 * @function steal.build.apps
+		 * @parent steal.build
 		 * 
+		 * `steal.build.apps(moduleIds, buildOptions)` builds 
+		 * multiple apps at once and packages shared dependencies to 
+		 * improve loading performance.
+		 * 
+		 * You can call it from a js script like:
+		 * 
+		 *     load('steal/rhino/rhino.js')
+		 *     steal('steal/build/apps',function(apps){
+		 * 	     steal.build.apps(['app1','app2','app3'],{
+		 *         to: "packages/",
+		 *         depth: 4,
+		 *         packageSteal: true
+		 *       })
+		 *     })
+		 * 
+		 * Or from the command line like:
+		 * 
+		 *     ./js steal/buildjs app1 app2 app3 -to packages/ -depth 3 -pacakgeSteal 
+		 * 
+		 * This will build app1, app2, and app3's `production.js` and `production.css` file
+		 * and possibly the following packages:
+		 * 
+		 *  - app1_app2_app3 - resources shared by all applications
+		 *  - app1_app2 - resources shared by app 1 and 2 
+		 *  - app1_app3 - resources shared by app 1 and 3
+		 *  - app2_app3 - resources shared by app 2 and 3
+		 * 
+		 * Changing the depth to 2 will only create `app1_app2_app3`.
+		 * 
+		 * @param {Array} moduleIds An array of application
+		 * @param {Object} [buildOptions] A object map of the following
+		 * configuration properties: 
+		 * 
+		 * __to__ - the location to deploy packages. Defaults to
+		 * `"packages/"`.
+		 * 
+		 * __depth__ -  how many scripts to load, including the 
+		 * app's production scripts. This means that depth should 
+		 * always be 2 or more.  Depth defaults to `infinity`.
 		 * 
 		 */
-		var apps = steal.build.apps = function( list, options ) {
+		var apps = steal.build.apps = function( moduleIds, buildOptions ) {
 			
-			options = steal.opts(options || {}, {
+			buildOptions = steal.opts(buildOptions || {}, {
 				//folder to build to, defaults to the folder the page is in
 				to: 1
 			});
@@ -29,20 +65,29 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 			// set the compressor globally
 			//steal.build.compressor = steal.build.builders.scripts.compressors[options.compressor || "localClosure"]();
 			//set defaults
-			options.to = options.to || "packages/"
+			buildOptions.to = buildOptions.to || "packages/"
 			// check if path exists
-			var dest = steal.File(options.to);
+			var dest = steal.config('root').join(buildOptions.to);
+
 			if(!dest.exists()){
 				var dir = dest.dir();
 				dest.mkdir();
 			}
+			buildOptions.depth = buildOptions.depth || Infinity;
+			if(buildOptions.depth < 2){
+				steal.print("Depth must be 2 or greater. depth=2 means every app loads its production "+
+				"file and a single common package shared by all.");
+				quit()
+			}
 			var options = {
 				appFiles : [],
-				files : {}
+				files : {},
+				// tells it to only do app file
+				multipleOpens: true
 			}
 			// opens each app and add its dependencies to options
-			steal.build.apps.open(list, options, function(options){
-				apps.makePackages(options);
+			steal.build.apps.open(moduleIds, options, function(options){
+				apps.makePackages(options, buildOptions);
 			})
 			
 		};
@@ -53,7 +98,8 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 		/**
 		 * Opens se
 		 * @param {Array} appNames
-		 * @param {Object} options An object that has an appFiles array, and a files object.
+		 * @param {Object} options An object that
+		 * has an appFiles array, and a files object.
 		 * 
 		 *     {appFiles : [], files: {}}
 		 *     
@@ -86,34 +132,30 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 		// opens one app, adds dependencies
 		_open : function(appName, options, callback){
 			//= Configure what we are going to load from APP name
-			
 			// if we have html, get  the app-name
 			var html = 'steal/rhino/blank.html',
 				data = {env: 'development'};
 			if(appName.indexOf('.html') > 2){
 				html = appName;
 				appName = null;
-			} else if(/\.js$/.test(appName)){
-				// set as start file
-				data = {startFile: appName};
-				appName = appName.substr(0, appName.length-3);
 			} else {
+				appName = steal.id(appName);
 				data = {
-					startFile: appName + "/" + steal.File(appName).basename() + ".js"
+					startId: appName
 				}
 			}
-			steal.print("Opening " + ( appName || html) );
+			
 			
 			// use last steal to load page
-			if(options.newPage === false && steal.build.apps.lastSteal){
+			if(options.newPage === false && options.steal){
+				steal.print("  stealing " + ( data.startId ) );
 				// move steal back
 				var curSteal = window.steal,
-					newSteal = window.steal= this.lastSteal;
+					newSteal = window.steal= options.steal;
 				// listen to when this is done
 				window.steal.one("end", function(rootSteal){
-					steal.print("  adding dependencies");
-					
-					options.appFiles.push(  apps.addDependencies(rootSteal, options.files, appName )  );
+
+					options.appFiles.push(  apps.addDependencies(rootSteal.dependencies[0], options, appName )  );
 					
 					// set back steal
 					window.steal = curSteal;
@@ -125,12 +167,19 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 				})
 				
 				// steal file
-				window.steal(data.startFile);
+				window.steal({id: data.startId});
 			} else {
+				steal.print("  opening " + ( appName || html) );
 				steal.build.open(html, data, function(opener){
 					steal.print("  adding dependencies");
-					var appFile = apps.addDependencies(opener.rootSteal, options, appName );
+					if(options.multipleOpens){
+						var firstDependency = opener.rootSteal.dependencies[3]
+					} else {
+						var firstDependency = opener.rootSteal;
+					}
+					var appFile = apps.addDependencies(firstDependency, options, appName );
 					options.appFiles.push(  appFile  );
+					options.steal = opener.steal;
 					steal.print(" ")
 					callback(options, opener);
 				})
@@ -166,6 +215,7 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 		 * @return {file} the root dependency file for this application
 		 */
 		addDependencies: function( resource, options, appName ) {
+			//print("  "+resource.options.id+":"+appName)
 			var id = resource.options.id,
 				buildType = resource.options.buildType, 
 				file = maker(options.files, id || appName, function(){
@@ -174,7 +224,9 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 					if( id && resource.options.buildType != 'fn' ) {
 						// some might not have source yet
 						steal.print("  + "+id );
-						var source = resource.options.text ||  readFile( steal.idToUri( resource.options.id , true ) );
+						
+						// convert using steal's root because that might have been configured
+						var source = resource.options.text ||  readFile( steal.idToUri( resource.options.id ) );
 					}
 					resource.options.text = resource.options.text || source
 					
@@ -189,9 +241,10 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 					}
 					
 				});
-
+			
 			// don't add the same appName more than once
-			if(file.appNames.indexOf(appName) == -1){
+			// don't add a resource to itself
+			if(id && appName && file.appNames.indexOf(appName) == -1){
 				file.appNames.push(appName);
 			}
 			
@@ -388,13 +441,12 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 		 * @param {appFiles} appFiles
 		 * @param {files} files
 		 */
-		makePackages: function(options) {
+		makePackages: function(options, buildOptions) {
 			
 			steal.print("Making packages")
 			
 			//add an order number so we can sort them nicely
 			apps.order(options);
-
 			// will be set to the biggest group
 			var sharing,
 				/*
@@ -422,12 +474,28 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 			});
 			
 			// remove stealconfig.js temporarily.  It will be added to every production.js
-			var stealconfig = options.files['stealconfig.js'];
+			var stealconfig = {
+				stealOpts: {
+					text: readFile('stealconfig.js'),
+					id: steal.URI("stealconfig.js"),
+					buildType: "js"
+				},
+				appNames: [],
+				dependencyFileNames: [],
+				packaged: false
+			},
+				shares = [];
 			
 			delete options.files['stealconfig.js'];
 
+			while(sharing = apps.getMostShared(options.files)){
+				shares.push(sharing);
+			};
+				
+			shareUtil.flatten(shares, buildOptions.depth);
+
 			//while there are files left to be packaged, get the most shared and largest package
-			while ((sharing = apps.getMostShared(options.files))) {
+			shares.forEach(function(sharing){
 				steal.print('\npackaging shared by ' + sharing.appNames.join(", "))
 
 				
@@ -435,10 +503,7 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 				//  the name of the file we are making.  
 				//    If there is only one app it's an app's production.js
 				//    If there are multiple apps, it's a package
-					packageName = sharing.appNames.length == 1 ? 
-									appsName + "/production" : 
-									"packages/" + sharing.appNames.join('-')
-									  .replace(/\//g,'_') 
+					packageName = makePackageName(sharing.appNames)
 				
 				// if there's multiple apps (it's a package), add this to appsPackages for each app
 				if( sharing.appNames.length > 1) {
@@ -470,7 +535,7 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 				// only add dependencies for the 'root' objects
 				if( sharing.appNames.length == 1) {
 					
-					packagesFiles[packageName+".js"].unshift("stealconfig.js")
+					packagesFiles[packageName+".js"].unshift("stealconfig.js");
 					filesForPackaging.unshift(stealconfig.stealOpts);
 					
 					// for the packages for this app
@@ -483,22 +548,18 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 				}
 				
 				//the source of the package
-				//
 				var pack = steal.build.js.makePackage(filesForPackaging, dependencies,packageName+ ".css", options.exclude)
 
 				//save the file
-				steal.print("saving " + packageName+".js");
-				steal.File(packageName+".js").save( pack.js );
+				steal.print("saving " + steal.config('root').join(packageName+".js"));
+				steal.config('root').join(packageName+".js").save( pack.js );
 
 				if(pack.css){
-					steal.print("saving " + packageName+".css");
-					steal.File(packageName+".css").save( pack.css.code );
-					// I need to tell things that 
-					// have this dependency, that this dependency needs
-					// me
+					steal.print("saving " + steal.config('root').join(packageName+".css"));
+					steal.config('root').join(packageName+".css").save( pack.css.code );
 				}
-				//packageCount++;
-			}
+				
+			})
 
 		}
 	})
@@ -517,4 +578,48 @@ steal('steal','steal/build/js','steal/build/css',function( steal ) {
 		cb && cb( root[prop] )
 		return root[prop];
 	}
+	
+	var makePackageName = function(appModuleIds){
+		if( appModuleIds.length == 1 ){
+			// this needs to go in that app's production
+			var filename = steal.URI(appModuleIds).filename().replace(/\.js$/,""),
+				folder = steal.URI(appModuleIds).dir().filename();
+
+			if( filename == folder ){
+				return (appModuleIds[0]+"").replace(/\/[^\/]*$/,"")+"/production"
+			} else {
+				return (appModuleIds[0]+"").replace(/\.[^\.]*$/,"")+".production"
+			}
+			
+			
+		} else {
+			return appNamesToMake(appModuleIds)
+		}							
+	}
+	var appNamesToName = {},
+		usedNames = {}
+	var appNamesToMake = function(appNames){
+					
+		//remove js if it's there
+		appNames = appNames.map(function(appName){
+			return (appName+"").replace(".js","")
+		});
+		var expanded = appNames.join('-');
+		// check map
+		if(appNamesToName[expanded]){
+			return appNamesToName[expanded];
+		}
+		// try with just the last part
+		var shortened = appNames.map(function(l){
+			return steal.URI(l).filename()
+		}).join('-');
+		
+		if(!usedNames[shortened]){
+			usedNames[shortened] = true;
+			return appNamesToName[expanded] = "packages/"+shortened;
+		} else {
+			return appNamesToName[expanded] = "packages/"+expanded.replace(/\//g,'_') ;
+		}
+	};
+	return steal.build.apps;
 })
